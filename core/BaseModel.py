@@ -1,3 +1,5 @@
+"""Base model for face fitting."""
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -8,11 +10,9 @@ from pytorch3d.renderer import (
     PointLights,
     RasterizationSettings,
     SoftPhongShader,
-    TexturesVertex,
     blending,
     look_at_view_transform,
 )
-from pytorch3d.structures import Meshes
 
 
 class BaseReconModel(nn.Module):

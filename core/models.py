@@ -1,23 +1,24 @@
+"""A library for fitting models."""
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
-    look_at_view_transform,
     FoVPerspectiveCameras,
+    MeshRasterizer,
+    MeshRenderer,
     PointLights,
     RasterizationSettings,
-    MeshRenderer,
-    MeshRasterizer,
     SoftPhongShader,
     TexturesVertex,
-    blending
+    blending,
+    look_at_view_transform,
 )
+from pytorch3d.structures import Meshes
 
 
 class ReconModel(nn.Module):
-    def __init__(self, face_model, 
-                focal=1015, img_size=224, device='cuda:0'):
+    def __init__(self, face_model, focal=1015, img_size=224, device="cuda:0"):
         super(ReconModel, self).__init__()
         self.facemodel = face_model
 
@@ -28,36 +29,64 @@ class ReconModel(nn.Module):
 
         self.renderer = self.get_renderer(self.device)
 
-        self.kp_inds = torch.tensor(self.facemodel['keypoints']-1).squeeze().long()
-        
-        meanshape = nn.Parameter(torch.from_numpy(self.facemodel['meanshape'],).float(), requires_grad=False)
-        self.register_parameter('meanshape', meanshape)
+        self.kp_inds = torch.tensor(self.facemodel["keypoints"] - 1).squeeze().long()
 
-        idBase = nn.Parameter(torch.from_numpy(self.facemodel['idBase']).float(), requires_grad=False)
-        self.register_parameter('idBase', idBase)
+        meanshape = nn.Parameter(
+            torch.from_numpy(
+                self.facemodel["meanshape"],
+            ).float(),
+            requires_grad=False,
+        )
+        self.register_parameter("meanshape", meanshape)
 
-        exBase = nn.Parameter(torch.from_numpy(self.facemodel['exBase']).float(), requires_grad=False)
-        self.register_parameter('exBase', exBase)
+        idBase = nn.Parameter(
+            torch.from_numpy(self.facemodel["idBase"]).float(), requires_grad=False
+        )
+        self.register_parameter("idBase", idBase)
 
-        meantex = nn.Parameter(torch.from_numpy(self.facemodel['meantex']).float(), requires_grad=False)
-        self.register_parameter('meantex', meantex)
+        exBase = nn.Parameter(
+            torch.from_numpy(self.facemodel["exBase"]).float(), requires_grad=False
+        )
+        self.register_parameter("exBase", exBase)
 
-        texBase = nn.Parameter(torch.from_numpy(self.facemodel['texBase']).float(), requires_grad=False)
-        self.register_parameter('texBase', texBase)
+        meantex = nn.Parameter(
+            torch.from_numpy(self.facemodel["meantex"]).float(), requires_grad=False
+        )
+        self.register_parameter("meantex", meantex)
 
-        tri = nn.Parameter(torch.from_numpy(self.facemodel['tri']).float(), requires_grad=False)
-        self.register_parameter('tri', tri)
+        texBase = nn.Parameter(
+            torch.from_numpy(self.facemodel["texBase"]).float(), requires_grad=False
+        )
+        self.register_parameter("texBase", texBase)
 
-        point_buf = nn.Parameter(torch.from_numpy(self.facemodel['point_buf']).float(), requires_grad=False)
-        self.register_parameter('point_buf', point_buf)
+        tri = nn.Parameter(
+            torch.from_numpy(self.facemodel["tri"]).float(), requires_grad=False
+        )
+        self.register_parameter("tri", tri)
+
+        point_buf = nn.Parameter(
+            torch.from_numpy(self.facemodel["point_buf"]).float(), requires_grad=False
+        )
+        self.register_parameter("point_buf", point_buf)
 
     def get_renderer(self, device):
         R, T = look_at_view_transform(10, 0, 0)
-        cameras = FoVPerspectiveCameras(device=device, R=R, T=T, znear=0.01, zfar=50,
-                                        fov=2*np.arctan(self.img_size//2/self.focal)*180./np.pi)
+        cameras = FoVPerspectiveCameras(
+            device=device,
+            R=R,
+            T=T,
+            znear=0.01,
+            zfar=50,
+            fov=2 * np.arctan(self.img_size // 2 / self.focal) * 180.0 / np.pi,
+        )
 
-        lights = PointLights(device=device, location=[[0.0, 0.0, 1e5]], ambient_color=[[1, 1, 1]],
-                             specular_color=[[0., 0., 0.]], diffuse_color=[[0., 0., 0.]])
+        lights = PointLights(
+            device=device,
+            location=[[0.0, 0.0, 1e5]],
+            ambient_color=[[1, 1, 1]],
+            specular_color=[[0.0, 0.0, 0.0]],
+            diffuse_color=[[0.0, 0.0, 0.0]],
+        )
 
         raster_settings = RasterizationSettings(
             image_size=self.img_size,
@@ -67,16 +96,10 @@ class ReconModel(nn.Module):
         blend_params = blending.BlendParams(background_color=[0, 0, 0])
 
         renderer = MeshRenderer(
-            rasterizer=MeshRasterizer(
-                cameras=cameras,
-                raster_settings=raster_settings
-            ),
+            rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
             shader=SoftPhongShader(
-                device=device,
-                cameras=cameras,
-                lights=lights,
-                blend_params=blend_params
-            )
+                device=device, cameras=cameras, lights=lights, blend_params=blend_params
+            ),
         )
         return renderer
 
@@ -93,25 +116,29 @@ class ReconModel(nn.Module):
     def Shape_formation(self, id_coeff, ex_coeff):
         n_b = id_coeff.size(0)
 
-        face_shape = torch.einsum('ij,aj->ai', self.idBase, id_coeff) + \
-                     torch.einsum('ij,aj->ai', self.exBase, ex_coeff) + self.meanshape
+        face_shape = (
+            torch.einsum("ij,aj->ai", self.idBase, id_coeff)
+            + torch.einsum("ij,aj->ai", self.exBase, ex_coeff)
+            + self.meanshape
+        )
 
         face_shape = face_shape.view(n_b, -1, 3)
-        face_shape = face_shape - self.meanshape.view(1, -1, 3).mean(dim=1, keepdim=True)
+        face_shape = face_shape - self.meanshape.view(1, -1, 3).mean(
+            dim=1, keepdim=True
+        )
 
         return face_shape
 
     def Texture_formation(self, tex_coeff):
         n_b = tex_coeff.size(0)
-        face_texture = torch.einsum('ij,aj->ai', self.texBase, tex_coeff) + self.meantex
+        face_texture = torch.einsum("ij,aj->ai", self.texBase, tex_coeff) + self.meantex
 
         face_texture = face_texture.view(n_b, -1, 3)
         return face_texture
 
     def Compute_norm(self, face_shape):
-
         face_id = self.tri.long() - 1
-        point_id = self.point_buf.long() - 1 
+        point_id = self.point_buf.long() - 1
         shape = face_shape
         v1 = shape[:, face_id[:, 0], :]
         v2 = shape[:, face_id[:, 1], :]
@@ -119,9 +146,11 @@ class ReconModel(nn.Module):
         e1 = v1 - v2
         e2 = v2 - v3
         face_norm = e1.cross(e2)
-        empty = torch.zeros((face_norm.size(0), 1, 3), dtype=face_norm.dtype, device=face_norm.device)
-        face_norm = torch.cat((face_norm, empty), 1) 
-        v_norm = face_norm[:, point_id, :].sum(2)  
+        empty = torch.zeros(
+            (face_norm.size(0), 1, 3), dtype=face_norm.dtype, device=face_norm.device
+        )
+        face_norm = torch.cat((face_norm, empty), 1)
+        v_norm = face_norm[:, point_id, :].sum(2)
         v_norm = v_norm / v_norm.norm(dim=2).unsqueeze(2)
 
         return v_norm
@@ -129,23 +158,41 @@ class ReconModel(nn.Module):
     def Projection_block(self, face_shape):
         half_image_width = self.img_size // 2
         batchsize = face_shape.shape[0]
-        camera_pos = torch.tensor([0.0,0.0,10.0], device=face_shape.device).reshape(1, 1, 3)
+        camera_pos = torch.tensor([0.0, 0.0, 10.0], device=face_shape.device).reshape(
+            1, 1, 3
+        )
         # tensor.reshape(constant([0.0,0.0,10.0]),[1,1,3])
-        p_matrix = np.array([self.focal, 0.0, half_image_width, \
-                            0.0, self.focal, half_image_width, \
-                            0.0, 0.0, 1.0], dtype=np.float32)
+        p_matrix = np.array(
+            [
+                self.focal,
+                0.0,
+                half_image_width,
+                0.0,
+                self.focal,
+                half_image_width,
+                0.0,
+                0.0,
+                1.0,
+            ],
+            dtype=np.float32,
+        )
 
         p_matrix = np.tile(p_matrix.reshape(1, 3, 3), [batchsize, 1, 1])
-        reverse_z = np.tile(np.reshape(np.array([1.0,0,0,0,1,0,0,0,-1.0], dtype=np.float32),[1,3,3]),
-                            [batchsize,1,1])
-        
+        reverse_z = np.tile(
+            np.reshape(
+                np.array([1.0, 0, 0, 0, 1, 0, 0, 0, -1.0], dtype=np.float32), [1, 3, 3]
+            ),
+            [batchsize, 1, 1],
+        )
+
         p_matrix = torch.tensor(p_matrix, device=face_shape.device)
         reverse_z = torch.tensor(reverse_z, device=face_shape.device)
-        face_shape = torch.matmul(face_shape,reverse_z) + camera_pos
-        aug_projection = torch.matmul(face_shape,p_matrix.permute((0,2,1)))
+        face_shape = torch.matmul(face_shape, reverse_z) + camera_pos
+        aug_projection = torch.matmul(face_shape, p_matrix.permute((0, 2, 1)))
 
-        face_projection = aug_projection[:,:,:2]/ \
-                        torch.reshape(aug_projection[:,:,2],[batchsize,-1,1])
+        face_projection = aug_projection[:, :, :2] / torch.reshape(
+            aug_projection[:, :, 2], [batchsize, -1, 1]
+        )
         return face_projection
 
     @staticmethod
@@ -160,7 +207,8 @@ class ReconModel(nn.Module):
 
         rotXYZ = torch.eye(3).view(1, 3, 3).repeat(n_b * 3, 1, 1).view(3, n_b, 3, 3)
 
-        if angles.is_cuda: rotXYZ = rotXYZ.cuda()
+        if angles.is_cuda:
+            rotXYZ = rotXYZ.cuda()
 
         rotXYZ[0, :, 1, 1] = cosx
         rotXYZ[0, :, 1, 2] = -sinx
@@ -188,7 +236,6 @@ class ReconModel(nn.Module):
 
     @staticmethod
     def Illumination_layer(face_texture, norm, gamma):
-
         n_b, num_vertex, _ = face_texture.size()
         n_v_full = n_b * num_vertex
         gamma = gamma.view(-1, 3, 9).clone()
@@ -202,7 +249,7 @@ class ReconModel(nn.Module):
         c0 = 1 / np.sqrt(4 * np.pi)
         c1 = np.sqrt(3.0) / np.sqrt(4 * np.pi)
         c2 = 3 * np.sqrt(5.0) / np.sqrt(12 * np.pi)
-        d0 = 0.5/ np.sqrt(3.0)
+        d0 = 0.5 / np.sqrt(3.0)
 
         Y0 = torch.ones(n_v_full).to(gamma.device).float() * a0 * c0
         norm = norm.view(-1, 3)
@@ -231,10 +278,11 @@ class ReconModel(nn.Module):
         return lms
 
     def forward(self, coeff):
-
         batch_num = coeff.shape[0]
-        
-        id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = self.Split_coeff(coeff)
+
+        id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = self.Split_coeff(
+            coeff
+        )
 
         face_shape = self.Shape_formation(id_coeff, ex_coeff)
         face_texture = self.Texture_formation(tex_coeff)
@@ -245,8 +293,7 @@ class ReconModel(nn.Module):
         face_color = self.Illumination_layer(face_texture, face_norm_r, gamma)
         face_lms_t = self.get_lms(face_shape_t, self.kp_inds)
         lms = self.Projection_block(face_lms_t)
-        lms = torch.stack([lms[:, :, 0], self.img_size-lms[:, :, 1]], dim=2)
-
+        lms = torch.stack([lms[:, :, 0], self.img_size - lms[:, :, 1]], dim=2)
 
         face_color = TexturesVertex(face_color)
 

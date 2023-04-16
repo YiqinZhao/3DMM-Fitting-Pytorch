@@ -1,17 +1,7 @@
-import numpy as np
+"""Basel Face Model 09 PyTorch implementation."""
+
 import torch
-import torch.nn as nn
-from pytorch3d.renderer import (
-    FoVPerspectiveCameras,
-    MeshRasterizer,
-    MeshRenderer,
-    PointLights,
-    RasterizationSettings,
-    SoftPhongShader,
-    TexturesVertex,
-    blending,
-    look_at_view_transform,
-)
+from pytorch3d.renderer import TexturesVertex
 from pytorch3d.structures import Meshes
 
 from third_party.face_fitting_pytorch.core.BaseModel import BaseReconModel

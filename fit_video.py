@@ -1,7 +1,9 @@
-import glob
+"""A CLI for fitting a video.
+TODO(yiqinzhao@): fix this CLI.
+"""
+
 import os
 import pickle
-import random
 import shutil
 from multiprocessing import Process, set_start_method
 
@@ -15,7 +17,6 @@ from core import get_recon_model
 from core.fitting_dataset import FittingDataset
 from core.options import VideoFittingOptions
 from facenet_pytorch import MTCNN
-from PIL import Image
 from tqdm import tqdm
 
 
